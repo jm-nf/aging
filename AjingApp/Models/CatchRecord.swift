@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct CatchRecord: Identifiable, Codable {
     let id: UUID

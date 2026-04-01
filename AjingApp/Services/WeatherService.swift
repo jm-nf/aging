@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct WeatherData {
     let temperature: Double
