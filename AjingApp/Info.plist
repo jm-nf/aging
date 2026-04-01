@@ -24,6 +24,15 @@
     <true/>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>現在地から近い釣り場を表示するために位置情報を使用します。</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+        <string>processing</string>
+    </array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.ajingnavi.berth-refresh</string>
+    </array>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>

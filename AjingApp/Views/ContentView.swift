@@ -4,9 +4,17 @@ struct ContentView: View {
     @StateObject private var tideVM = TideViewModel()
     @StateObject private var weatherService = WeatherService()
     @StateObject private var catchStore = CatchRecordStore()
+    @EnvironmentObject private var berthService: BerthMonitorService
 
     var body: some View {
         TabView {
+            BerthMonitorView()
+                .environmentObject(berthService)
+                .tabItem {
+                    Label("バース", systemImage: "anchor.circle.fill")
+                }
+                .badge(berthService.isFishingAffected ? "!" : nil)
+
             TideView()
                 .environmentObject(tideVM)
                 .tabItem {
@@ -28,11 +36,6 @@ struct ContentView: View {
                 .environmentObject(catchStore)
                 .tabItem {
                     Label("釣果", systemImage: "fish.fill")
-                }
-
-            InfoView()
-                .tabItem {
-                    Label("情報", systemImage: "info.circle.fill")
                 }
         }
         .task {
