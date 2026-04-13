@@ -715,8 +715,8 @@ struct AddCatchSheet: View {
                     }
                 }
 
-                // 停泊船舶（鶴見川河口 + 機能解除時のみ）
-                if spotName == "鶴見川河口" && berthUnlockStore.isUnlocked {
+                // 停泊船舶（聖地コスモ + 機能解除時のみ）
+                if spotName == "聖地コスモ" && berthUnlockStore.isUnlocked {
                     Section {
                         if berthService.vessels.isEmpty {
                             Text("船舶データなし（バースモニターで更新してください）")
@@ -968,7 +968,7 @@ struct EditCatchSheet: View {
                     }
                 }
 
-                if spotName == "鶴見川河口" && berthUnlockStore.isUnlocked {
+                if spotName == "聖地コスモ" && berthUnlockStore.isUnlocked {
                     Section {
                         if berthService.vessels.isEmpty {
                             Text("船舶データなし（バースモニターで更新してください）")

@@ -16,7 +16,7 @@ struct SpotDashboardView: View {
     @State private var selectedForecastDay: ForecastItem? = nil
 
     private var showBerth: Bool {
-        spot.name == "鶴見川河口" && berthUnlockStore.isUnlocked
+        spot.name == "聖地コスモ" && berthUnlockStore.isUnlocked
     }
 
     init(spot: FishingSpot) {
@@ -64,7 +64,7 @@ struct SpotDashboardView: View {
                     }
                 }
 
-                // MARK: バースセクション（鶴見川河口かつ解除済みのみ）
+                // MARK: バースセクション（聖地コスモかつ解除済みのみ）
                 if showBerth {
                     sectionHeader(title: "バース状況", icon: "anchor")
                     BerthStatusCard(berthService: berthService, onDetail: { showBerthDetail = true })
@@ -103,7 +103,8 @@ struct SpotDashboardView: View {
                 day: day,
                 items: weatherManager.fullHourlyForecast.filter {
                     Calendar.current.isDate($0.date, inSameDayAs: day.date)
-                }
+                },
+                location: tideVM.selectedSpot.tideLocation
             )
         }
         .task {
@@ -201,7 +202,8 @@ struct SpotDashboardView: View {
     }
 
     private var fishingScoreCard: some View {
-        let score = tideVM.fishingScoreNow
+        let seaTemp = weatherManager.seaTemperature.last(where: { !$0.isForecast })?.temp
+        let score = tideVM.fishingScore(seaTemp: seaTemp)
         let color: Color = score.score >= 75 ? .green : score.score >= 50 ? .orange : .red
         let label = score.score >= 75 ? "釣れそう！" : score.score >= 50 ? "まずまず" : "厳しめ"
 
@@ -232,33 +234,25 @@ struct SpotDashboardView: View {
     }
 
     private var tideChartCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("潮位グラフ").font(.headline)
-            Chart {
-                ForEach(tideVM.tideChartPoints) { point in
-                    AreaMark(x: .value("時刻", point.time), y: .value("潮位", point.height))
-                        .foregroundStyle(LinearGradient(
-                            colors: [.blue.opacity(0.4), .blue.opacity(0.05)],
-                            startPoint: .top, endPoint: .bottom
-                        ))
-                    LineMark(x: .value("時刻", point.time), y: .value("潮位", point.height))
-                        .foregroundStyle(.blue).lineStyle(StrokeStyle(lineWidth: 2))
+        let tideType: String? = tideVM.tideInfo.map { i in
+            let d = min(i.moonPhase, abs(i.moonPhase - 0.5), 1.0 - i.moonPhase)
+            return d < 0.1 ? "大潮" : d < 0.2 ? "中潮" : d < 0.3 ? "小潮" : "長潮/若潮"
+        }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("潮位グラフ").font(.headline)
+                Spacer()
+                if let type = tideType {
+                    Text(type)
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.15))
+                        .foregroundStyle(.blue)
+                        .clipShape(Capsule())
                 }
             }
-            .chartXAxis {
-                AxisMarks(values: .stride(by: .hour, count: 3)) { _ in
-                    AxisGridLine(); AxisValueLabel(format: .dateTime.hour())
-                }
-            }
-            .chartYAxis {
-                AxisMarks { value in
-                    AxisGridLine()
-                    AxisValueLabel {
-                        Text("\(value.as(Double.self)?.formatted(.number.precision(.fractionLength(1))) ?? "")m")
-                    }
-                }
-            }
-            .frame(height: 180)
+            CustomTideChart(points: tideVM.tideChartPoints, selectedDate: tideVM.selectedDate)
+                .frame(height: 220)
         }
         .padding()
         .background(Color(.systemBackground))

@@ -194,30 +194,95 @@ struct TideCalculator {
     }
 
     // MARK: - 釣りスコア
+    // Kinoshita et al. (2026) 論文知見に基づく:
+    // ・日周垂直移動(DVM): マアジは夜間〜薄暮に表層浮上 → 夕マヅメ・夜間が最高
+    // ・水温下限: 約10°C / 最適: 15〜17°C
+    // ・季節: 春〜夏は浅場回帰、冬は深場移動で陸っぱり不利
+    // ・潮流: 満干潮前後に餌場形成が活性化
 
-    static func fishingScore(for tideInfo: TideInfo, at hour: Int) -> (score: Int, reason: String) {
-        let calendar = Calendar.current
-        let now = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: tideInfo.date)!
+    static func fishingScore(for tideInfo: TideInfo, at hour: Int, seaTemp: Double? = nil) -> (score: Int, reason: String) {
+        var jstCal = Calendar(identifier: .gregorian)
+        jstCal.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        let now = jstCal.date(bySettingHour: hour, minute: 0, second: 0, of: tideInfo.date)!
         let currentHeight = height(at: now, location: tideInfo.location)
         let hourBefore    = height(at: now.addingTimeInterval(-3600), location: tideInfo.location)
         let trend = currentHeight - hourBefore
 
-        var score = 50
+        var score = 0
         var reasons: [String] = []
 
+        // ── 1. 時間帯スコア（DVM論文より: 30点満点）
+        // 夕マヅメ(日没前後)が最高、夜間が次点、朝マヅメ、昼間は最低
+        let timeScore: Int
+        switch hour {
+        case 17, 18:          timeScore = 30; reasons.append("夕マヅメ🌅")
+        case 19, 20:          timeScore = 26; reasons.append("夜の入り口")
+        case 21, 22, 23, 0,
+             1, 2, 3:         timeScore = 22; reasons.append("夜間")
+        case 4, 5:            timeScore = 24; reasons.append("朝マヅメ🌄")
+        case 6:               timeScore = 18; reasons.append("早朝")
+        default:              timeScore = 4   // 昼間はDVMで深場
+        }
+        score += timeScore
+
+        // ── 2. 潮差スコア（20点満点）
         let distFromSyzygy = min(tideInfo.moonPhase, abs(tideInfo.moonPhase - 0.5), 1.0 - tideInfo.moonPhase)
+        let tidalScore: Int
         if distFromSyzygy < 0.1 {
-            score += 20; reasons.append("大潮時期")
+            tidalScore = 20; reasons.append("大潮")
         } else if distFromSyzygy < 0.2 {
-            score += 10; reasons.append("中潮時期")
+            tidalScore = 14; reasons.append("中潮")
+        } else if distFromSyzygy < 0.3 {
+            tidalScore = 8;  reasons.append("小潮")
+        } else {
+            tidalScore = 4
+        }
+        score += tidalScore
+
+        // ── 3. 潮流スコア（20点満点）
+        // 満干潮前後1時間が最も潮が動く = 餌場形成活性化
+        let trendAbs = abs(trend)
+        let tideFlowScore: Int
+        if trendAbs > 0.35 {
+            tideFlowScore = 20; reasons.append(trend > 0 ? "上げ潮◎" : "下げ潮◎")
+        } else if trendAbs > 0.2 {
+            tideFlowScore = 14; reasons.append(trend > 0 ? "上げ潮" : "下げ潮")
+        } else if trendAbs > 0.08 {
+            tideFlowScore = 8
+        } else {
+            tideFlowScore = 3  // 転流直後の緩慢期
+        }
+        score += tideFlowScore
+
+        // ── 4. 水温スコア（15点満点）
+        // 論文: 下限10°C, 最適15〜17°C, 経験範囲9.9〜26.0°C
+        if let temp = seaTemp {
+            let tempScore: Int
+            switch temp {
+            case ..<10:        tempScore = 0;  reasons.append("水温低すぎ⚠️")
+            case 10..<12:      tempScore = 5;  reasons.append("水温低め")
+            case 12..<15:      tempScore = 10
+            case 15..<18:      tempScore = 15; reasons.append("水温最適🌡️")
+            case 18..<22:      tempScore = 12
+            case 22..<26:      tempScore = 9;  reasons.append("水温高め")
+            default:           tempScore = 5
+            }
+            score += tempScore
+        } else {
+            score += 8  // 水温データなし時は中間値
         }
 
-        if abs(trend) > 0.3 {
-            score += 15; reasons.append(trend > 0 ? "上げ潮" : "下げ潮")
+        // ── 5. 季節スコア（15点満点）
+        // 論文: 春〜夏は浅場回帰(陸っぱり有利)、冬は深場移動
+        let month = jstCal.component(.month, from: tideInfo.date)
+        let seasonScore: Int
+        switch month {
+        case 5...8:            seasonScore = 15; reasons.append("最盛期🎣")
+        case 4, 9, 10:         seasonScore = 12
+        case 3, 11:            seasonScore = 8
+        default:               seasonScore = 4;  reasons.append("冬季(深場)")
         }
-
-        if hour >= 18 || hour <= 6 { score += 15; reasons.append("夜間・マヅメ") }
-        if [5, 6, 17, 18].contains(hour) { score += 10; reasons.append("マヅメ時") }
+        score += seasonScore
 
         return (score: min(score, 100), reason: reasons.joined(separator: "・"))
     }

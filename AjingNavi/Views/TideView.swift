@@ -7,16 +7,36 @@ struct TideView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    locationSelector
-                    currentTideCard
-                    fishingScoreCard
-                    tideChart
-                    tideTableCard
-                    moonPhaseCard
+            ZStack {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        locationSelector
+
+                        if let error = vm.error {
+                            errorCard(error)
+                        }
+
+                        if vm.isLoading {
+                            loadingCard
+                        } else if vm.tideInfo != nil {
+                            currentTideCard
+                            fishingScoreCard
+                            tideChart
+                            tideTableCard
+                            moonPhaseCard
+                        } else if vm.error == nil {
+                            noDataCard
+                        }
+                    }
+                    .padding()
                 }
-                .padding()
+
+                if vm.isLoading {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black.opacity(0.1))
+                }
             }
             .navigationTitle("潮汐情報")
             .navigationBarTitleDisplayMode(.large)
@@ -35,6 +55,65 @@ struct TideView: View {
                 }
             }
         }
+    }
+
+    private var noDataCard: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wave.3")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            Text("潮汐データがまだ読み込まれていません")
+                .font(.headline)
+            Text("釣り場を選択して、もう一度試してください")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8)
+    }
+
+    private var loadingCard: some View {
+        HStack(spacing: 12) {
+            ProgressView()
+            Text("潮汐データを取得中...")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 8)
+    }
+
+    private func errorCard(_ error: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(.red)
+                Text("エラーが発生しました")
+                    .font(.headline)
+                Spacer()
+            }
+            Text(error)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button(action: { vm.recalculate() }) {
+                HStack {
+                    Image(systemName: "arrow.clockwise")
+                    Text("再度取得")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .red.opacity(0.1), radius: 8)
     }
 
     private var locationSelector: some View {
@@ -147,49 +226,25 @@ struct TideView: View {
     }
 
     private var tideChart: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("潮位グラフ")
-                .font(.headline)
-
-            if #available(iOS 16.0, *) {
-                Chart {
-                    ForEach(vm.tideChartPoints) { point in
-                        AreaMark(
-                            x: .value("時刻", point.time),
-                            y: .value("潮位", point.height)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.blue.opacity(0.4), .blue.opacity(0.05)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        LineMark(
-                            x: .value("時刻", point.time),
-                            y: .value("潮位", point.height)
-                        )
+        let tideType: String? = vm.tideInfo.map { i in
+            let d = min(i.moonPhase, abs(i.moonPhase - 0.5), 1.0 - i.moonPhase)
+            return d < 0.1 ? "大潮" : d < 0.2 ? "中潮" : d < 0.3 ? "小潮" : "長潮/若潮"
+        }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("潮位グラフ").font(.headline)
+                Spacer()
+                if let type = tideType {
+                    Text(type)
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.15))
                         .foregroundStyle(.blue)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                    }
+                        .clipShape(Capsule())
                 }
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .hour, count: 3)) { value in
-                        AxisGridLine()
-                        AxisValueLabel(format: .dateTime.hour())
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks { value in
-                        AxisGridLine()
-                        AxisValueLabel { Text("\(value.as(Double.self)?.formatted(.number.precision(.fractionLength(1))) ?? "")m") }
-                    }
-                }
-                .frame(height: 180)
-            } else {
-                SimpleTideChartFallback(points: vm.tideChartPoints)
-                    .frame(height: 180)
             }
+            CustomTideChart(points: vm.tideChartPoints, selectedDate: vm.selectedDate)
+                .frame(height: 280)
         }
         .padding()
         .background(Color(.systemBackground))
@@ -326,6 +381,124 @@ struct SimpleTideChartFallback: View {
                 }
             }
             .stroke(Color.blue, lineWidth: 2)
+        }
+    }
+}
+
+// MARK: - Custom Tide Chart
+
+struct CustomTideChart: View {
+    let points: [TidePoint]
+    let selectedDate: Date
+
+    private var jstCal: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        return c
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TideCanvasView(points: points, selectedDate: selectedDate, jstCal: jstCal)
+            TideXAxisView(selectedDate: selectedDate, jstCal: jstCal)
+                .frame(height: 20)
+        }
+    }
+}
+
+struct TideCanvasView: View {
+    let points: [TidePoint]
+    let selectedDate: Date
+    let jstCal: Calendar
+
+    var body: some View {
+        GeometryReader { geo in
+            let dayStart = jstCal.startOfDay(for: selectedDate)
+            let dayEnd = jstCal.date(byAdding: .day, value: 1, to: dayStart)!
+            let totalSec = dayEnd.timeIntervalSince(dayStart)
+            let heights = points.map { $0.height }
+            let minH = (heights.min() ?? -0.5) - 0.2
+            let maxH = (heights.max() ?? 1.0) + 0.2
+            let hRange = maxH - minH
+            let now = Date()
+            let isToday = jstCal.isDate(selectedDate, inSameDayAs: now)
+
+            Canvas { ctx, size in
+                // 1時間ごとのグリッド線
+                for hour in 0...24 {
+                    guard let tick = jstCal.date(byAdding: .hour, value: hour, to: dayStart) else { continue }
+                    let x = CGFloat(tick.timeIntervalSince(dayStart) / totalSec) * size.width
+                    var path = Path()
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: size.height))
+                    let isMajor = hour % 3 == 0
+                    ctx.stroke(path, with: .color(.gray.opacity(isMajor ? 0.35 : 0.15)), lineWidth: isMajor ? 0.8 : 0.3)
+                }
+
+                let sorted = points.sorted { $0.time < $1.time }
+                guard sorted.count > 1 else { return }
+
+                let fx = CGFloat(sorted[0].time.timeIntervalSince(dayStart) / totalSec) * size.width
+                let fy = size.height - CGFloat((sorted[0].height - minH) / hRange) * size.height
+
+                // エリア塗り
+                var areaPath = Path()
+                areaPath.move(to: CGPoint(x: fx, y: size.height))
+                areaPath.addLine(to: CGPoint(x: fx, y: fy))
+                for p in sorted.dropFirst() {
+                    let px = CGFloat(p.time.timeIntervalSince(dayStart) / totalSec) * size.width
+                    let py = size.height - CGFloat((p.height - minH) / hRange) * size.height
+                    areaPath.addLine(to: CGPoint(x: px, y: py))
+                }
+                areaPath.addLine(to: CGPoint(x: CGFloat(sorted.last!.time.timeIntervalSince(dayStart) / totalSec) * size.width, y: size.height))
+                areaPath.closeSubpath()
+                ctx.fill(areaPath, with: .color(.blue.opacity(0.3)))
+
+                // ライン
+                var linePath = Path()
+                linePath.move(to: CGPoint(x: fx, y: fy))
+                for p in sorted.dropFirst() {
+                    let px = CGFloat(p.time.timeIntervalSince(dayStart) / totalSec) * size.width
+                    let py = size.height - CGFloat((p.height - minH) / hRange) * size.height
+                    linePath.addLine(to: CGPoint(x: px, y: py))
+                }
+                ctx.stroke(linePath, with: .color(.blue), lineWidth: 2)
+
+                // 現在時刻ライン（赤い点線）
+                if isToday {
+                    let nowX = CGFloat(now.timeIntervalSince(dayStart) / totalSec) * size.width
+                    if nowX >= 0 && nowX <= size.width {
+                        var nowPath = Path()
+                        nowPath.move(to: CGPoint(x: nowX, y: 0))
+                        nowPath.addLine(to: CGPoint(x: nowX, y: size.height))
+                        ctx.stroke(nowPath, with: .color(.red.opacity(0.8)),
+                                   style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct TideXAxisView: View {
+    let selectedDate: Date
+    let jstCal: Calendar
+
+    var body: some View {
+        GeometryReader { geo in
+            let dayStart = jstCal.startOfDay(for: selectedDate)
+            let dayEnd = jstCal.date(byAdding: .day, value: 1, to: dayStart)!
+            let totalSec = dayEnd.timeIntervalSince(dayStart)
+
+            ForEach([0, 3, 6, 9, 12, 15, 18, 21, 24], id: \.self) { hour in
+                if let tick = jstCal.date(byAdding: .hour, value: hour, to: dayStart) {
+                    let x = CGFloat(tick.timeIntervalSince(dayStart) / totalSec) * geo.size.width
+                    Text("\(hour)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .position(x: x, y: 10)
+                }
+            }
         }
     }
 }

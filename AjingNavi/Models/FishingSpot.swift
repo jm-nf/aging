@@ -15,6 +15,7 @@ struct FishingSpot: Identifiable, Equatable, Hashable {
     let parkingAvailable: Bool
     let toiretAvailable: Bool
     let difficulty: Difficulty
+    var isHidden: Bool = false
 
     enum Difficulty: String, CaseIterable {
         case beginner     = "初心者向け"
@@ -53,7 +54,7 @@ extension FishingSpot {
         // ── 横浜エリア ──────────────────────────────
 
         FishingSpot(
-            name: "鶴見川河口",
+            name: "聖地コスモ",
             location: "横浜市鶴見区大黒町7-97",
             coordinate: CLLocationCoordinate2D(latitude: 35.479, longitude: 139.670),
             description: "鶴見エリア。夜の常夜灯周りが狙い目。",
@@ -62,7 +63,8 @@ extension FishingSpot {
             accessInfo: "新子安駅よりバス",
             parkingAvailable: true,
             toiretAvailable: true,
-            difficulty: .intermediate
+            difficulty: .intermediate,
+            isHidden: true
         ),
 
         FishingSpot(

@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 
 struct SpotsView: View {
+    @EnvironmentObject var berthUnlockStore: BerthUnlockStore
     @State private var selectedSpot: FishingSpot?
     @State private var searchText = ""
     @State private var filterDifficulty: FishingSpot.Difficulty? = nil
@@ -15,7 +16,8 @@ struct SpotsView: View {
         FishingSpot.yokohamaYokosuka.filter { spot in
             let matchesSearch = searchText.isEmpty || spot.name.contains(searchText)
             let matchesDifficulty = filterDifficulty == nil || spot.difficulty == filterDifficulty
-            return matchesSearch && matchesDifficulty
+            let isVisible = !spot.isHidden || berthUnlockStore.isUnlocked
+            return matchesSearch && matchesDifficulty && isVisible
         }
     }
 
@@ -181,7 +183,7 @@ struct SpotDetailSheet: View {
     @State private var showBerthDetail = false
 
     private var showBerth: Bool {
-        spot.name == "鶴見川河口" && berthUnlockStore.isUnlocked
+        spot.name == "聖地コスモ" && berthUnlockStore.isUnlocked
     }
 
     init(spot: FishingSpot) {
@@ -239,7 +241,7 @@ struct SpotDetailSheet: View {
                     }
                     .padding()
 
-                    // バース情報（鶴見川河口 かつ 解除済みのみ）
+                    // バース情報（聖地コスモ かつ 解除済みのみ）
                     if showBerth {
                         BerthStatusCard(berthService: berthService, onDetail: {
                             showBerthDetail = true
@@ -330,7 +332,7 @@ struct FacilityBadge: View {
     }
 }
 
-// MARK: - バースステータスカード（鶴見川河口専用・隠し機能）
+// MARK: - バースステータスカード（聖地コスモ専用・隠し機能）
 
 struct BerthStatusCard: View {
     let berthService: BerthMonitorService

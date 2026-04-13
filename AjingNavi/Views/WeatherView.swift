@@ -69,7 +69,8 @@ struct WeatherView: View {
                     day: day,
                     items: service.fullHourlyForecast.filter {
                         Calendar.current.isDate($0.date, inSameDayAs: day.date)
-                    }
+                    },
+                    location: service.selectedSpot.tideLocation
                 )
             }
         }
@@ -507,66 +508,136 @@ struct HourlyForecastCell: View {
 struct DayHourlySheet: View {
     let day: ForecastItem
     let items: [HourlyForecastItem]
+    let location: TideLocation
+    @StateObject private var tideService = TideService()
+    @State private var tideChartPoints: [TidePoint] = []
+    @State private var tideExtrema: [TidePoint] = []
+    @State private var tideType: String = ""
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            Group {
-                if items.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "clock.badge.questionmark")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.secondary)
-                        Text("この日の時間別データがありません")
-                            .foregroundStyle(.secondary)
-                        Text("WeatherKitの時間別予報は取得できる範囲が限られます")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(40)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            // 日サマリー
-                            HStack(spacing: 16) {
-                                Text(day.weatherEmoji).font(.system(size: 40))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(day.description).font(.subheadline.bold())
-                                    HStack(spacing: 6) {
-                                        Text(String(format: "最高 %.0f°", day.tempMax))
-                                            .foregroundStyle(.red.opacity(0.8))
-                                        Text(String(format: "最低 %.0f°", day.tempMin))
-                                            .foregroundStyle(.blue.opacity(0.8))
-                                    }
-                                    .font(.caption)
-                                }
-                                Spacer()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // 日サマリー
+                    HStack(spacing: 16) {
+                        Text(day.weatherEmoji).font(.system(size: 40))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(day.description).font(.subheadline.bold())
+                            HStack(spacing: 6) {
+                                Text(String(format: "最高 %.0f°", day.tempMax))
+                                    .foregroundStyle(.red.opacity(0.8))
+                                Text(String(format: "最低 %.0f°", day.tempMin))
+                                    .foregroundStyle(.blue.opacity(0.8))
                             }
-                            .padding()
-                            .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .font(.caption)
+                        }
+                        Spacer()
+                    }
+                    .padding()
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                            // 時間別セル
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 10) {
-                                    ForEach(items) { item in
-                                        HourlyForecastCell(item: item)
-                                    }
+                    // 潮汐グラフ
+                    if tideService.isLoading {
+                        HStack {
+                            ProgressView()
+                            Text("潮汐データ取得中...")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    } else if !tideChartPoints.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("潮位グラフ").font(.subheadline.bold())
+                                Spacer()
+                                if !tideType.isEmpty {
+                                    Text(tideType)
+                                        .font(.caption.bold())
+                                        .padding(.horizontal, 8).padding(.vertical, 3)
+                                        .background(Color.blue.opacity(0.15))
+                                        .foregroundStyle(.blue)
+                                        .clipShape(Capsule())
                                 }
-                                .padding(.horizontal, 2)
+                            }
+                            CustomTideChart(points: tideChartPoints, selectedDate: day.date)
+                                .frame(height: 180)
+
+                            if !tideExtrema.isEmpty {
+                                Divider()
+                                HStack(spacing: 20) {
+                                    ForEach(tideExtrema) { point in
+                                        HStack(spacing: 6) {
+                                            Image(systemName: point.type == .high ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                                                .foregroundStyle(point.type == .high ? .blue : .orange)
+                                            VStack(alignment: .leading, spacing: 1) {
+                                                Text(String(format: "%.2fm", point.height))
+                                                    .font(.subheadline.bold())
+                                                    .foregroundStyle(point.type == .high ? .blue : .orange)
+                                                Text(point.time, style: .time)
+                                                    .font(.caption2).foregroundStyle(.secondary)
+                                            }
+                                        }
+                                    }
+                                    Spacer()
+                                }
                             }
                         }
                         .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    // 時間別天気セル
+                    if items.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "clock.badge.questionmark")
+                                .font(.system(size: 36)).foregroundStyle(.secondary)
+                            Text("この日の時間別データがありません")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(items) { item in
+                                    HourlyForecastCell(item: item)
+                                }
+                            }
+                            .padding(.horizontal, 2)
+                        }
                     }
                 }
+                .padding()
             }
             .navigationTitle("\(day.dateLabel)(\(day.dayOfWeek)) 時間別予報")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("閉じる") { dismiss() }
+                }
+            }
+            .task {
+                await tideService.fetchTides(for: day.date, location: location)
+                var jstCal = Calendar(identifier: .gregorian)
+                jstCal.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+                let dayStart = jstCal.startOfDay(for: day.date)
+                let dayEnd = jstCal.date(byAdding: .day, value: 1, to: dayStart)!
+                let allPoints = tideService.tideInfo?.points ?? []
+                tideChartPoints = allPoints
+                    .filter { $0.type == nil && $0.time >= dayStart && $0.time < dayEnd }
+                    .sorted { $0.time < $1.time }
+                tideExtrema = allPoints
+                    .filter { $0.type != nil && $0.time >= dayStart && $0.time < dayEnd }
+                    .sorted { $0.time < $1.time }
+                if let info = tideService.tideInfo {
+                    let d = min(info.moonPhase, abs(info.moonPhase - 0.5), 1.0 - info.moonPhase)
+                    tideType = d < 0.1 ? "大潮" : d < 0.2 ? "中潮" : d < 0.3 ? "小潮" : "長潮/若潮"
                 }
             }
         }

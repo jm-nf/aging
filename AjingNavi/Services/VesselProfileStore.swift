@@ -20,6 +20,21 @@ class VesselProfileStore: ObservableObject {
         profiles.first { $0.vesselName == vesselName }
     }
 
+    func upsertFromFetch(_ vessels: [VesselInfo]) {
+        let now = Date()
+        for vessel in vessels {
+            if let idx = profiles.firstIndex(where: { $0.vesselName == vessel.vesselName }) {
+                profiles[idx].lastSeen = now
+            } else {
+                var p = VesselProfile(vesselName: vessel.vesselName)
+                p.firstSeen = now
+                p.lastSeen = now
+                profiles.append(p)
+            }
+        }
+        persist()
+    }
+
     func save(_ profile: VesselProfile) {
         var updated = profile
         updated.lastUpdated = Date()

@@ -1,0 +1,10 @@
+# APIキー・機密情報
+Config.swift
+
+# Xcode
+build/
+.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# macOS
+.DS_Store

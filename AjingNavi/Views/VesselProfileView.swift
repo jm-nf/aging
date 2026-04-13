@@ -42,7 +42,7 @@ struct VesselHistoryView: View {
         .navigationTitle("入船履歴")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            if berthUnlockStore.isAdminUnlocked {
+            if berthUnlockStore.isUnlocked {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         newVesselName = ""
@@ -183,7 +183,7 @@ struct VesselProfileView: View {
         .navigationTitle(vesselName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if berthUnlockStore.isAdminUnlocked {
+            if berthUnlockStore.isUnlocked {
                 Button("編集") { showEdit = true }
             }
         }

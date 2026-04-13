@@ -8,4 +8,6 @@ struct VesselProfile: Codable, Identifiable {
     var shadowPosition: String = ""
     var notes: String = ""
     var lastUpdated: Date = Date()
+    var firstSeen: Date? = nil
+    var lastSeen: Date? = nil
 }

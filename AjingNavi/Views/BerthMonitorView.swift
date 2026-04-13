@@ -6,6 +6,7 @@ struct BerthMonitorView: View {
     @EnvironmentObject var berthUnlockStore: BerthUnlockStore
     @State private var showNotificationAlert = false
     @State private var showHistory = false
+    @State private var showDatabase = false
     @State private var autoRefreshTimer: Timer?
 
     var body: some View {
@@ -38,6 +39,11 @@ struct BerthMonitorView: View {
                         } label: {
                             Label("入船履歴", systemImage: "clock.arrow.counterclockwise")
                         }
+                        Button {
+                            showDatabase = true
+                        } label: {
+                            Label("船舶データベース", systemImage: "list.bullet.rectangle")
+                        }
                         Divider()
                         Button {
                             Task { await service.fetch() }
@@ -63,12 +69,23 @@ struct BerthMonitorView: View {
                     .environmentObject(service)
                     .environmentObject(berthUnlockStore)
             }
+            .navigationDestination(isPresented: $showDatabase) {
+                VesselDatabaseView()
+                    .environmentObject(vesselProfileStore)
+                    .environmentObject(service)
+                    .environmentObject(berthUnlockStore)
+            }
             .refreshable {
                 await service.fetch()
             }
             .onAppear {
                 if service.vessels.isEmpty {
-                    Task { await service.fetch() }
+                    Task {
+                        await service.fetch()
+                        vesselProfileStore.upsertFromFetch(service.vessels)
+                    }
+                } else {
+                    vesselProfileStore.upsertFromFetch(service.vessels)
                 }
                 startAutoRefresh()
             }
@@ -93,9 +110,15 @@ struct BerthMonitorView: View {
                         .foregroundStyle(service.isFishingAffected ? .red : .green)
 
                     if service.isFishingAffected {
-                        Text("住友大阪セメント岸壁に船が停泊中")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if let docked = service.currentlyDockedVessels.first {
+                            Text(docked.vesselName)
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("住友大阪セメント岸壁に船が停泊中")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     } else if !service.upcomingVessels.isEmpty {
                         let next = service.upcomingVessels[0]
                         if let arrival = next.arrivalDate {
@@ -126,6 +149,13 @@ struct BerthMonitorView: View {
                         .foregroundStyle(.orange)
                     Spacer()
                 }
+                // 次の入港予定船があれば表示
+                if let nextUp = service.upcomingVessels.first {
+                    nextVesselRow(vessel: nextUp)
+                }
+            } else if !service.upcomingVessels.isEmpty {
+                let next = service.upcomingVessels[0]
+                nextVesselRow(vessel: next)
             }
         }
         .padding()
@@ -135,6 +165,56 @@ struct BerthMonitorView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(service.isFishingAffected ? Color.red.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1)
         )
+    }
+
+    // MARK: - Next Vessel Row
+
+    @ViewBuilder
+    private func nextVesselRow(vessel: VesselInfo) -> some View {
+        let timeFmt: DateFormatter = {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "ja_JP")
+            f.timeZone = TimeZone(identifier: "Asia/Tokyo")
+            f.dateFormat = "M/d(E) HH:mm"
+            return f
+        }()
+
+        HStack(spacing: 6) {
+            Image(systemName: "ferry.fill")
+                .font(.caption)
+                .foregroundStyle(.blue)
+            Text(vessel.vesselName)
+                .font(.caption.bold())
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            VStack(alignment: .trailing, spacing: 1) {
+                if let arr = vessel.arrivalDate {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.down.to.line")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.orange)
+                        Text(timeFmt.string(from: arr))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.orange)
+                    }
+                }
+                if let dep = vessel.departureDate {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.up.to.line")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.blue)
+                        Text(timeFmt.string(from: dep))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.blue)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.blue.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Control Bar
@@ -581,9 +661,22 @@ struct BerthGanttChart: View {
 
     // 今日の0時から pastDays 日前を起点にする（JST固定）
     private var wStart: Date {
-        Self.jstCal.startOfDay(for: Date()).addingTimeInterval(-Double(pastDays) * 24 * 3600)
+        // JST で「現在時刻」を取得し、その時点での日付の00:00:00を計算
+        let now = Date()
+        let components = Self.jstCal.dateComponents([.year, .month, .day], from: now)
+
+        // JST カレンダーで components から Date を生成（これは JST の00:00:00を表す）
+        guard let todayJST00 = Self.jstCal.date(from: components) else {
+            return now
+        }
+
+        // pastDays 日前の00:00:00
+        let startDate = Self.jstCal.date(byAdding: .day, value: -pastDays, to: todayJST00) ?? todayJST00
+        return startDate
     }
-    private var wEnd: Date { wStart.addingTimeInterval(Double(totalDays) * 24 * 3600) }
+    private var wEnd: Date {
+        Self.jstCal.date(byAdding: .day, value: totalDays, to: wStart) ?? wStart
+    }
 
     private func xFor(_ d: Date) -> CGFloat {
         let c = max(wStart, min(wEnd, d))
@@ -615,7 +708,7 @@ struct BerthGanttChart: View {
                         Color.clear.frame(height: dayHdrH + hrHdrH)
                         ForEach(filtered) { v in nameCell(v) }
                     }
-                    .frame(width: nameColW)
+                    .frame(width: nameColW, height: dayHdrH + hrHdrH + chartH)
 
                     // 右スクロール: タイムライン
                     ScrollView(.horizontal, showsIndicators: true) {
@@ -683,7 +776,7 @@ struct BerthGanttChart: View {
             Color(.secondarySystemBackground).frame(width: totalW, height: dayHdrH)
             ForEach(0..<totalDays, id: \.self) { i in
                 let d = wStart.addingTimeInterval(Double(i) * 86400)
-                let isToday = Calendar.current.isDateInToday(d)
+                let isToday = Self.jstCal.isDateInToday(d)
                 ZStack(alignment: .leading) {
                     if isToday {
                         Color.blue.opacity(0.1).frame(width: dayW, height: dayHdrH)
@@ -781,6 +874,7 @@ struct BerthGanttChart: View {
 
     private var vesselBars: some View {
         ZStack(alignment: .topLeading) {
+            Color.clear.frame(width: totalW, height: chartH)
             ForEach(Array(filtered.enumerated()), id: \.element.id) { i, v in
                 vesselBar(v, row: i)
             }
@@ -799,6 +893,7 @@ struct BerthGanttChart: View {
 
         let fmt = DateFormatter()
         fmt.locale = Locale(identifier: "ja_JP")
+        fmt.timeZone = TimeZone(identifier: "Asia/Tokyo")
         fmt.dateFormat = "M/d H:mm"
         let arrStr = v.arrivalDate.map   { fmt.string(from: $0) } ?? "?"
         let depStr = v.departureDate.map { fmt.string(from: $0) } ?? "未定"
@@ -831,7 +926,7 @@ struct BerthGanttChart: View {
                 .frame(width: bw, height: barH)
             }
         }
-        .offset(x: arrX, y: yTop)
+        .position(x: arrX + bw / 2, y: yTop + barH / 2)
     }
 
     // MARK: Now Line（現在時刻）
