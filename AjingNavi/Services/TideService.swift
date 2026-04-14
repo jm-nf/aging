@@ -1,161 +1,117 @@
 import Foundation
 import Combine
 
-// MARK: - WorldTides API Response
-
-private struct WorldTideResponse: Codable {
-    let status: Int?
-    let heights: [HeightDatum]?
-    let error: String?
-}
-
-private struct HeightDatum: Codable {
-    let dt: Int
-    let date: String
-    let height: Double
-}
-
-/// 潮汐データを管理するサービス
+/// 潮汐データ管理サービス
+/// 優先順位: JMA公式推算テキスト → TideCalculator（調和分潮、オフライン時フォールバック）
+@MainActor
 class TideService: ObservableObject {
     @Published var tideInfo: TideInfo?
     @Published var isLoading = false
     @Published var error: String?
 
-    private var cache: [String: TideInfo] = [:]  // 日付ごとにキャッシュ
+    private var cache: [String: TideInfo] = [:]
+    private let loader = JMATideLoader.shared
 
-    // 横浜の座標
-    private let yokohamaLat = 35.4437
-    private let yokohamaLon = 139.6380
-
-    /// 指定日の潮汐情報を取得
     func fetchTides(for date: Date, location: TideLocation) async {
-        let cacheKey = dateString(date)
-
-        // キャッシュがあれば利用
+        let cacheKey = dateString(date) + "_" + location.rawValue
         if let cached = cache[cacheKey] {
-            await MainActor.run {
-                self.tideInfo = cached
-            }
+            self.tideInfo = cached
             return
         }
 
-        await MainActor.run {
-            self.isLoading = true
-            self.error = nil
-        }
+        self.isLoading = true
+        self.error = nil
 
-        do {
-            let baseURL = "https://www.worldtides.info/api/v3"
-
-            // JST で指定日の 00:00:00 ～ 23:59:59 をUTCタイムスタンプに変換
-            var jstCal = Calendar(identifier: .gregorian)
-            jstCal.timeZone = TimeZone(identifier: "Asia/Tokyo")!
-
-            let dateComponents = jstCal.dateComponents([.year, .month, .day], from: date)
-            guard let dayStartJST = jstCal.date(from: dateComponents) else {
-                throw URLError(.badURL)
-            }
-
-            // JST 00:00 = UTC 前日の 15:00
-            // JST 23:59:59 = UTC その日の 14:59:59
-            // 確実にカバーするため、前日の UTC 00:00 から翌日の UTC 23:59 まで取得
-            let dayBeforeJST = jstCal.date(byAdding: .day, value: -1, to: dayStartJST)!
-            let dayAfterJST = jstCal.date(byAdding: .day, value: 1, to: dayStartJST)!
-
-            let startTime = Int(dayBeforeJST.timeIntervalSince1970)
-            let endTime = Int(dayAfterJST.addingTimeInterval(86400).timeIntervalSince1970)
-
-            var components = URLComponents(string: baseURL)!
-            components.queryItems = [
-                URLQueryItem(name: "heights", value: ""),
-                URLQueryItem(name: "begin", value: String(startTime)),
-                URLQueryItem(name: "end", value: String(endTime)),
-                URLQueryItem(name: "lat", value: String(yokohamaLat)),
-                URLQueryItem(name: "lon", value: String(yokohamaLon)),
-                URLQueryItem(name: "key", value: Config.worldTidesAPIKey)
-            ]
-
-            guard let url = components.url else {
-                throw URLError(.badURL)
-            }
-
-            let (data, response) = try await URLSession.shared.data(from: url)
-
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                throw URLError(.badServerResponse)
-            }
-
-            let decoded = try JSONDecoder().decode(WorldTideResponse.self, from: data)
-
-            guard let status = decoded.status, status == 200 else {
-                throw NSError(domain: "TideService", code: -1, userInfo: [NSLocalizedDescriptionKey: decoded.error ?? "API returned an error"])
-            }
-
-            guard let heights = decoded.heights, !heights.isEmpty else {
-                throw NSError(domain: "TideService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No tidal height data returned"])
-            }
-
-            // 潮位データを TidePoint に変換
-            var tidePoints: [TidePoint] = []
-            for datum in heights {
-                let pointTime = Date(timeIntervalSince1970: TimeInterval(datum.dt))
-                tidePoints.append(TidePoint(time: pointTime, height: datum.height, type: nil))
-            }
-
-            // 極値（満潮・干潮）を検出
-            var extrema: [TidePoint] = []
-            for i in 1..<(tidePoints.count - 1) {
-                let prev = tidePoints[i - 1].height
-                let curr = tidePoints[i].height
-                let next = tidePoints[i + 1].height
-
-                if curr > prev && curr > next {
-                    extrema.append(TidePoint(time: tidePoints[i].time, height: curr, type: .high))
-                } else if curr < prev && curr < next {
-                    extrema.append(TidePoint(time: tidePoints[i].time, height: curr, type: .low))
+        // 1) JMA公式データを試みる
+        if let stn = location.jmaStationCode {
+            do {
+                if let day = try await loader.dayData(stationCode: stn, date: date) {
+                    let info = makeTideInfo(from: day, date: date, location: location)
+                    cache[cacheKey] = info
+                    self.tideInfo = info
+                    self.isLoading = false
+                    return
                 }
-            }
-
-            // TideInfo を構築
-            let moonInfo = TideCalculator.moonPhase(for: date)
-            let tideInfo = TideInfo(
-                date: date,
-                location: location,
-                points: tidePoints + extrema,
-                moonPhase: moonInfo.phase,
-                moonPhaseName: moonInfo.name,
-                moonAge: moonInfo.age
-            )
-
-            // キャッシュに保存
-            self.cache[cacheKey] = tideInfo
-
-            await MainActor.run {
-                self.isLoading = false
-                self.tideInfo = tideInfo
-                self.error = nil
-            }
-        } catch let error as URLError {
-            await MainActor.run {
-                self.isLoading = false
-                self.error = "潮汐データ取得エラー: \(error.localizedDescription)"
-            }
-        } catch {
-            await MainActor.run {
-                self.isLoading = false
-                self.error = "潮汐データ取得エラー: \(error.localizedDescription)"
+            } catch {
+                self.error = "JMA取得失敗: \(error.localizedDescription)"
             }
         }
+
+        // 2) フォールバック: 自作調和潮位計算
+        let computed = TideCalculator.calculate(for: date, location: location)
+        cache[cacheKey] = computed
+        self.tideInfo = computed
+        self.isLoading = false
     }
 
-    /// キャッシュをクリア
     func clearCache() {
         cache.removeAll()
+        Task { await loader.clearMemoryCache() }
     }
 
+    // MARK: - JMADayData → TideInfo 変換
+
+    private func makeTideInfo(from day: JMADayData,
+                              date: Date,
+                              location: TideLocation) -> TideInfo {
+        var jst = Calendar(identifier: .gregorian)
+        jst.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        let dayStart = jst.date(from: DateComponents(
+            timeZone: TimeZone(identifier: "Asia/Tokyo"),
+            year: day.year, month: day.month, day: day.day,
+            hour: 0, minute: 0, second: 0))!
+
+        // 代用局（久里浜・湘南）のみ振幅補正を適用
+        let mult = location.needsHeightCorrection ? location.heightMultiplier : 1.0
+
+        // 毎時24点 → 10分刻み線形補間（145点: 0:00〜24:00）
+        var hourly = day.hourlyHeights.map { Double($0) / 100.0 * mult }
+        hourly.append(hourly.last ?? 0)  // index 24（24時 = 翌0時）用
+
+        var chartPoints: [TidePoint] = []
+        chartPoints.reserveCapacity(145)
+        for i in 0...144 {
+            let hf = Double(i) / 6.0
+            let h0 = Int(floor(hf))
+            let frac = hf - Double(h0)
+            let h1 = min(h0 + 1, hourly.count - 1)
+            let height = hourly[h0] * (1.0 - frac) + hourly[h1] * frac
+            let t = dayStart.addingTimeInterval(Double(i) * 600)
+            chartPoints.append(TidePoint(time: t, height: height, type: nil))
+        }
+
+        // JMA公式の満潮・干潮をそのまま極値点として採用
+        var extrema: [TidePoint] = []
+        for h in day.highTides {
+            let t = jst.date(bySettingHour: h.hour, minute: h.minute, second: 0, of: dayStart)!
+            extrema.append(TidePoint(time: t,
+                                     height: Double(h.cm) / 100.0 * mult,
+                                     type: .high))
+        }
+        for l in day.lowTides {
+            let t = jst.date(bySettingHour: l.hour, minute: l.minute, second: 0, of: dayStart)!
+            extrema.append(TidePoint(time: t,
+                                     height: Double(l.cm) / 100.0 * mult,
+                                     type: .low))
+        }
+
+        let moon = TideCalculator.moonPhase(for: date)
+        return TideInfo(
+            date: date,
+            location: location,
+            points: chartPoints + extrema,
+            moonPhase: moon.phase,
+            moonPhaseName: moon.name,
+            moonAge: moon.age
+        )
+    }
+
+    // MARK: - Helpers
+
     private func dateString(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd"
-        return formatter.string(from: date)
+        var jst = Calendar(identifier: .gregorian)
+        jst.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        let c = jst.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d%02d%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 }

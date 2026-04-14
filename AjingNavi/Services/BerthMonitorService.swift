@@ -171,26 +171,88 @@ class BerthMonitorService: ObservableObject {
         notificationsEnabled = settings.authorizationStatus == .authorized
     }
 
+    private let notifiedFingerprintsKey = "berth_notified_fingerprints"
+
+    private func notificationFingerprint(_ vessel: VesselInfo) -> String {
+        "\(vessel.vesselName)|\(vessel.arrivalDate?.timeIntervalSince1970 ?? 0)|\(vessel.departureDate?.timeIntervalSince1970 ?? 0)"
+    }
+
+    private func loadNotifiedFingerprints() -> Set<String> {
+        let arr = UserDefaults.standard.stringArray(forKey: notifiedFingerprintsKey) ?? []
+        return Set(arr)
+    }
+
+    private func saveNotifiedFingerprint(_ fp: String) {
+        var set = loadNotifiedFingerprints()
+        set.insert(fp)
+        UserDefaults.standard.set(Array(set), forKey: notifiedFingerprintsKey)
+    }
+
     private func detectChangesAndNotify(previous: [VesselInfo], current: [VesselInfo]) async {
         let center = UNUserNotificationCenter.current()
+        var notified = loadNotifiedFingerprints()
 
-        // New vessel arrived at MTK0C
+        let prevByName = Dictionary(grouping: previous, by: { $0.vesselName })
+            .compactMapValues { $0.first }
+
         for vessel in current {
-            let wasPresent = previous.contains { $0.vesselName == vessel.vesselName && $0.berth == vessel.berth }
-            if !wasPresent && vessel.isCurrentlyDocked {
+            let fp = notificationFingerprint(vessel)
+            if notified.contains(fp) { continue }
+
+            if let old = prevByName[vessel.vesselName] {
+                // Existing vessel: check for schedule changes
+                if old.arrivalDate != vessel.arrivalDate || old.departureDate != vessel.departureDate {
+                    var diffs: [String] = []
+                    let fmt = DateFormatter()
+                    fmt.locale = Locale(identifier: "ja_JP")
+                    fmt.timeZone = TimeZone(identifier: "Asia/Tokyo")
+                    fmt.dateFormat = "M/d H:mm"
+                    if old.arrivalDate != vessel.arrivalDate {
+                        let oldStr = old.arrivalDate.map { fmt.string(from: $0) } ?? "?"
+                        let newStr = vessel.arrivalDate.map { fmt.string(from: $0) } ?? "?"
+                        diffs.append("入港 \(oldStr)→\(newStr)")
+                    }
+                    if old.departureDate != vessel.departureDate {
+                        let oldStr = old.departureDate.map { fmt.string(from: $0) } ?? "?"
+                        let newStr = vessel.departureDate.map { fmt.string(from: $0) } ?? "?"
+                        diffs.append("出港 \(oldStr)→\(newStr)")
+                    }
+                    let content = UNMutableNotificationContent()
+                    content.title = "📋 スケジュール変更"
+                    content.body = "\(vessel.vesselName): \(diffs.joined(separator: " / "))"
+                    content.sound = .default
+                    let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+                    let request = UNNotificationRequest(identifier: "change_\(vessel.id)", content: content, trigger: trigger)
+                    try? await center.add(request)
+                    notified.insert(fp)
+                    saveNotifiedFingerprint(fp)
+                }
+            } else {
+                // Brand new vessel in schedule
+                let fmt = DateFormatter()
+                fmt.locale = Locale(identifier: "ja_JP")
+                fmt.timeZone = TimeZone(identifier: "Asia/Tokyo")
+                fmt.dateFormat = "M/d H:mm"
+                let arrStr = vessel.arrivalDate.map { fmt.string(from: $0) } ?? "不明"
                 let content = UNMutableNotificationContent()
-                content.title = "⚓ MTK0Cバース 入港"
-                content.body = "\(vessel.vesselName) が入港しました。\(vessel.dockingPeriodText)"
+                if vessel.isCurrentlyDocked {
+                    content.title = "⚓ MTK0Cバース 入港"
+                    content.body = "\(vessel.vesselName) が入港しました。\(vessel.dockingPeriodText)"
+                } else {
+                    content.title = "🗓 新しい予定船舶"
+                    content.body = "\(vessel.vesselName) の入港が登録されました（入港: \(arrStr)）"
+                }
                 content.sound = .default
                 content.userInfo = ["berth": vessel.berth, "vessel": vessel.vesselName]
-
                 let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-                let request = UNNotificationRequest(identifier: "arrival_\(vessel.vesselName)", content: content, trigger: trigger)
+                let request = UNNotificationRequest(identifier: "new_\(vessel.id)", content: content, trigger: trigger)
                 try? await center.add(request)
+                notified.insert(fp)
+                saveNotifiedFingerprint(fp)
             }
         }
 
-        // Vessel departed (was in list before, not now)
+        // Vessel departed (was docked before, not in current)
         for vessel in previous where vessel.isCurrentlyDocked {
             let stillPresent = current.contains { $0.vesselName == vessel.vesselName && $0.berth == vessel.berth }
             if !stillPresent {
@@ -200,7 +262,7 @@ class BerthMonitorService: ObservableObject {
                 content.sound = .default
 
                 let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-                let request = UNNotificationRequest(identifier: "departure_\(vessel.vesselName)", content: content, trigger: trigger)
+                let request = UNNotificationRequest(identifier: "departure_\(vessel.vesselName)_\(Date().timeIntervalSince1970)", content: content, trigger: trigger)
                 try? await center.add(request)
             }
         }

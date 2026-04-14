@@ -176,6 +176,7 @@ struct CatchDetailView: View {
     @State private var selectedPhotoIndex: Int? = nil
     @State private var showShareSettings = false
     @State private var showEditSheet = false
+    @State private var showReelsCreator = false
 
     private var record: CatchRecord? {
         store.records.first { $0.id == recordId }
@@ -230,6 +231,10 @@ struct CatchDetailView: View {
                 .environmentObject(tackleStore)
                 .environmentObject(berthUnlockStore)
                 .environmentObject(berthService)
+        }
+        .sheet(isPresented: $showReelsCreator) {
+            ReelsCreatorView(record: record)
+                .environmentObject(store)
         }
         .task(id: record.photoFilenames) {
             photos = store.loadPhotos(for: record)
@@ -447,6 +452,17 @@ struct CatchDetailView: View {
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+            }
+
+            Button {
+                showReelsCreator = true
+            } label: {
+                Label("Reels作成", systemImage: "film")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.purple)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
         .padding(.top, 4)

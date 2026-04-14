@@ -6,6 +6,8 @@ struct VesselDatabaseView: View {
     @EnvironmentObject var berthUnlockStore: BerthUnlockStore
 
     @State private var searchText = ""
+    @State private var showAddAlert = false
+    @State private var newVesselName = ""
 
     private var sortedProfiles: [VesselProfile] {
         profileStore.profiles
@@ -38,6 +40,25 @@ struct VesselDatabaseView: View {
         .navigationTitle("船舶データベース")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $searchText, prompt: "船名で検索")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    newVesselName = ""
+                    showAddAlert = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .alert("船舶を追加", isPresented: $showAddAlert) {
+            TextField("船舶名", text: $newVesselName)
+            Button("追加") {
+                let trimmed = newVesselName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty, profileStore.profile(for: trimmed) == nil else { return }
+                profileStore.save(VesselProfile(vesselName: trimmed))
+            }
+            Button("キャンセル", role: .cancel) {}
+        }
     }
 }
 

@@ -20,14 +20,16 @@ struct TideCalculator {
     }
 
     private static let constituents: [Constituent] = [
-        Constituent(id: "M2", amplitude: 0.6823, kappa: 134.7, speed: 28.9841042),
-        Constituent(id: "S2", amplitude: 0.2528, kappa: 175.6, speed: 30.0000000),
-        Constituent(id: "N2", amplitude: 0.1354, kappa: 122.5, speed: 28.4397295),
-        Constituent(id: "K1", amplitude: 0.1586, kappa:  96.6, speed: 15.0410686),
-        Constituent(id: "O1", amplitude: 0.1120, kappa:  71.6, speed: 13.9430356),
-        Constituent(id: "K2", amplitude: 0.0706, kappa: 181.5, speed: 30.0821373),
-        Constituent(id: "P1", amplitude: 0.0487, kappa:  97.6, speed: 14.9589314),
-        Constituent(id: "Q1", amplitude: 0.0225, kappa:  55.8, speed: 13.3986609),
+        // 気象庁 横浜験潮場 公式調和定数（主要8分潮）
+        // 出典: 気象庁 潮汐観測資料
+        Constituent(id: "M2",  amplitude: 0.6823, kappa: 134.7, speed: 28.9841042),
+        Constituent(id: "S2",  amplitude: 0.2528, kappa: 175.6, speed: 30.0000000),
+        Constituent(id: "N2",  amplitude: 0.1354, kappa: 122.5, speed: 28.4397295),
+        Constituent(id: "K1",  amplitude: 0.1586, kappa:  96.6, speed: 15.0410686),
+        Constituent(id: "O1",  amplitude: 0.1120, kappa:  71.6, speed: 13.9430356),
+        Constituent(id: "K2",  amplitude: 0.0706, kappa: 181.5, speed: 30.0821373),
+        Constituent(id: "P1",  amplitude: 0.0487, kappa:  97.6, speed: 14.9589314),
+        Constituent(id: "Q1",  amplitude: 0.0225, kappa:  55.8, speed: 13.3986609),
     ]
 
     private static let meanSeaLevel = 1.103  // Z0 (基本水準面からの平均海面高さ, m)
@@ -57,41 +59,80 @@ struct TideCalculator {
     private static func v0(id: String, s: Double, h: Double, p: Double) -> Double {
         // T = 180° (UTC零時における太陽時角)
         switch id {
-        case "M2": return norm(2 * h - 2 * s)            // 2T - 2s + 2h, 2T=0
-        case "S2": return 0                               // 2T = 0
-        case "N2": return norm(2 * h - 3 * s + p)        // 2T - 3s + p + 2h
-        case "K1": return norm(270 + h)                   // T + h + 90, T=180
-        case "O1": return norm(90 - 2 * s + h)           // T - 2s + h - 90, T=180
-        case "K2": return norm(2 * h)                     // 2T + 2h, 2T=0
-        case "P1": return norm(90 - h)                    // T - h + 270, T=180 → 90-h
-        case "Q1": return norm(90 - 3 * s + p + h)       // T - 3s + p + h - 90, T=180
-        default:   return 0
+        // 主要8分潮
+        case "M2":   return norm(2 * h - 2 * s)
+        case "S2":   return 0
+        case "N2":   return norm(2 * h - 3 * s + p)
+        case "K1":   return norm(270 + h)
+        case "O1":   return norm(90 - 2 * s + h)
+        case "K2":   return norm(2 * h)
+        case "P1":   return norm(270 - h)
+        case "Q1":   return norm(90 - 3 * s + p + h)
+        // 長周期分潮
+        case "Sa":   return norm(h)
+        case "Ssa":  return norm(2 * h)
+        case "Mm":   return norm(s - p)
+        case "Mf":   return norm(2 * s)
+        // 日周分潮
+        case "M1":   return norm(h - s + 270)
+        case "J1":   return norm(s + h + 270)
+        case "OO1":  return norm(2 * s + h + 270)
+        // 半日周分潮
+        case "2N2":  return norm(2 * h - 4 * s + 2 * p)
+        case "mu2":  return norm(4 * h - 4 * s)
+        case "nu2":  return norm(2 * h - 3 * s + p)
+        case "L2":   return norm(2 * h - s + p - 180)
+        case "T2":   return norm(2 * h - 283)             // p1(太陽近点) ≈ 283°
+        // 浅水分潮
+        case "MN4":  return norm(4 * h - 5 * s + p)      // V0(M2) + V0(N2)
+        case "M4":   return norm(4 * h - 4 * s)          // 2 × V0(M2)
+        case "MS4":  return norm(2 * h - 2 * s)          // V0(M2) + V0(S2)
+        case "M6":   return norm(6 * h - 6 * s)          // 3 × V0(M2)
+        case "2MS6": return norm(4 * h - 4 * s)          // 2×V0(M2) + V0(S2)
+        default:     return 0
         }
     }
 
     // 節点振幅補正 f
     private static func nodalF(id: String, N: Double) -> Double {
         let Nr = N * .pi / 180
+        let fM2 = 1.0 - 0.037 * cos(Nr)
         switch id {
-        case "M2", "N2": return 1.0 - 0.037 * cos(Nr)
-        case "S2", "P1": return 1.0
-        case "K1":       return 1.006 + 0.115 * cos(Nr)
-        case "O1", "Q1": return 1.009 + 0.187 * cos(Nr)
-        case "K2":       return 1.024 + 0.286 * cos(Nr)
-        default:         return 1.0
+        case "M2", "N2", "2N2", "mu2", "nu2", "L2": return fM2
+        case "S2", "P1", "T2", "Sa", "Ssa":          return 1.0
+        case "K1", "J1":  return 1.006 + 0.115 * cos(Nr)
+        case "O1", "Q1":  return 1.009 + 0.187 * cos(Nr)
+        case "OO1":       return 1.009 + 0.187 * cos(Nr)
+        case "K2":        return 1.024 + 0.286 * cos(Nr)
+        case "Mf":        return 1.043 + 0.414 * cos(Nr)
+        case "Mm":        return 1.0 - 0.130 * cos(Nr)
+        case "M1":        return 1.0
+        case "M4", "MN4": return fM2 * fM2
+        case "MS4":       return fM2
+        case "M6":        return fM2 * fM2 * fM2
+        case "2MS6":      return fM2 * fM2
+        default:          return 1.0
         }
     }
 
     // 節点補正角 u (度)
     private static func nodalU(id: String, N: Double) -> Double {
         let Nr = N * .pi / 180
+        let uM2 = -2.14 * sin(Nr)
         switch id {
-        case "M2", "N2": return -2.14 * sin(Nr)
-        case "S2", "P1": return 0
-        case "K1":       return -8.86 * sin(Nr)
-        case "O1", "Q1": return 10.8  * sin(Nr)
-        case "K2":       return -17.74 * sin(Nr)
-        default:         return 0
+        case "M2", "N2", "2N2", "mu2", "nu2", "L2": return uM2
+        case "S2", "P1", "T2", "Sa", "Ssa", "Mm":   return 0
+        case "K1", "J1":  return -8.86 * sin(Nr)
+        case "O1", "Q1":  return  10.8  * sin(Nr)
+        case "OO1":       return  10.8  * sin(Nr)
+        case "K2":        return -17.74 * sin(Nr)
+        case "Mf":        return -23.74 * sin(Nr)
+        case "M1":        return 0
+        case "M4", "MN4": return 2 * uM2
+        case "MS4":       return uM2
+        case "M6":        return 3 * uM2
+        case "2MS6":      return 2 * uM2
+        default:          return 0
         }
     }
 

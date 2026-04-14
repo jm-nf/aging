@@ -7,6 +7,7 @@ struct BerthMonitorView: View {
     @State private var showNotificationAlert = false
     @State private var showHistory = false
     @State private var showDatabase = false
+    @State private var selectedVessel: VesselInfo? = nil
     @State private var autoRefreshTimer: Timer?
 
     var body: some View {
@@ -74,6 +75,18 @@ struct BerthMonitorView: View {
                     .environmentObject(vesselProfileStore)
                     .environmentObject(service)
                     .environmentObject(berthUnlockStore)
+            }
+            .sheet(item: $selectedVessel) { v in
+                NavigationStack {
+                    VesselProfileView(vesselName: v.vesselName, vessel: v)
+                        .environmentObject(vesselProfileStore)
+                        .environmentObject(berthUnlockStore)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("閉じる") { selectedVessel = nil }
+                            }
+                        }
+                }
             }
             .refreshable {
                 await service.fetch()
@@ -268,7 +281,9 @@ struct BerthMonitorView: View {
             Label("在泊スケジュール（前後10日）", systemImage: "calendar.badge.clock")
                 .font(.headline)
 
-            BerthGanttChart(vessels: service.vessels)
+            BerthGanttChart(vessels: service.vessels, onLongPressVessel: { vessel in
+                selectedVessel = vessel
+            })
         }
         .padding()
         .background(Color(.systemBackground))
@@ -638,6 +653,7 @@ struct ScheduleEventRow: View {
 
 struct BerthGanttChart: View {
     let vessels: [VesselInfo]
+    var onLongPressVessel: ((VesselInfo) -> Void)? = nil
 
     // Layout
     private let nameColW: CGFloat = 90   // 左固定の船名カラム幅
@@ -927,6 +943,10 @@ struct BerthGanttChart: View {
             }
         }
         .position(x: arrX + bw / 2, y: yTop + barH / 2)
+        .onLongPressGesture(minimumDuration: 0.5) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onLongPressVessel?(v)
+        }
     }
 
     // MARK: Now Line（現在時刻）

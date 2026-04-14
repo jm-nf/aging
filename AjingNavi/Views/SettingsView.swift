@@ -27,7 +27,7 @@ struct SettingsView: View {
     private var appSection: some View {
         Section("アプリ情報") {
             LabeledContent("バージョン", value: appVersion)
-                .onTapGesture(count: 5) {
+                .onTapGesture(count: 12) {
                     guard !berthUnlockStore.isUnlocked else { return }
                     showUnlockField = true
                 }

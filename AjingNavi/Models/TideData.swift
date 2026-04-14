@@ -56,4 +56,20 @@ enum TideLocation: String, CaseIterable {
         case .shonan:   return 0.65  // 相模湾は潮差が小さい
         }
     }
+
+    // JMA推算潮汐テキストの局コード
+    var jmaStationCode: String? {
+        switch self {
+        case .yokohama:  return "QS"
+        case .yokosuka:  return "QN"
+        case .misaki:    return "Z1"   // 油壷
+        case .kurihama:  return "QN"   // JMA局なし → 横須賀で代用
+        case .shonan:    return "QS"   // JMA局なし → 横浜で代用
+        }
+    }
+
+    // 代用局を使う場合のみ heightMultiplier を適用
+    var needsHeightCorrection: Bool {
+        self == .kurihama || self == .shonan
+    }
 }
