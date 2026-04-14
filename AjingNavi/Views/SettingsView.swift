@@ -93,7 +93,7 @@ struct SettingsView: View {
 
     private var aboutSection: some View {
         Section("このアプリについて") {
-            Text("AjingNaviは神奈川エリアのアジング専用ナビアプリです。潮汐・天気・釣り場情報をまとめて確認できます。")
+            Text("AjingNaviは神奈川エリアのアジング専用ナビアプリです。潮汐・天気・スポット情報をまとめて確認できます。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

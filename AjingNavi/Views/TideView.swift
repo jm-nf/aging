@@ -64,7 +64,7 @@ struct TideView: View {
                 .foregroundStyle(.secondary)
             Text("潮汐データがまだ読み込まれていません")
                 .font(.headline)
-            Text("釣り場を選択して、もう一度試してください")
+            Text("スポットを選択して、もう一度試してください")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -120,7 +120,7 @@ struct TideView: View {
         HStack {
             Image(systemName: "mappin.circle.fill")
                 .foregroundStyle(.blue)
-            Text("釣り場")
+            Text("スポット")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()

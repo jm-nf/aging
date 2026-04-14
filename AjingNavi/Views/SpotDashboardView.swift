@@ -2,6 +2,52 @@ import SwiftUI
 import Charts
 import MapKit
 
+// MARK: - SpotDashboardRoot（タブから直接表示されるラッパー）
+
+struct SpotDashboardRoot: View {
+    @EnvironmentObject var spotStore: SpotSelectionStore
+    @EnvironmentObject var berthUnlockStore: BerthUnlockStore
+
+    private var visibleSpots: [FishingSpot] {
+        FishingSpot.yokohamaYokosuka.filter { !$0.isHidden || berthUnlockStore.isUnlocked }
+    }
+
+    var body: some View {
+        NavigationStack {
+            SpotDashboardView(spot: spotStore.selectedSpot)
+                .id(spotStore.selectedSpot.name)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        Menu {
+                            ForEach(visibleSpots) { spot in
+                                Button {
+                                    spotStore.selectedSpot = spot
+                                } label: {
+                                    if spot.name == spotStore.selectedSpot.name {
+                                        Label(spot.name, systemImage: "checkmark")
+                                    } else {
+                                        Text(spot.name)
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(spotStore.selectedSpot.name)
+                                    .font(.headline)
+                                Image(systemName: "chevron.down")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(.primary)
+                        }
+                    }
+                }
+        }
+    }
+}
+
+// MARK: - SpotDashboardView（ポイント詳細ダッシュボード）
+
 // ポイント詳細ダッシュボード（潮汐＋天気＋バースを1画面に統合）
 struct SpotDashboardView: View {
     let spot: FishingSpot
@@ -72,8 +118,6 @@ struct SpotDashboardView: View {
             }
             .padding()
         }
-        .navigationTitle(spot.name)
-        .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 12) {
@@ -507,5 +551,89 @@ struct SpotDashboardView: View {
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 8)
+    }
+}
+
+// MARK: - FacilityBadge
+
+struct FacilityBadge: View {
+    let available: Bool
+    let icon: String
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .foregroundStyle(available ? .blue : .secondary)
+            Text(label)
+                .font(.subheadline)
+            Image(systemName: available ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(available ? .green : .red)
+        }
+    }
+}
+
+// MARK: - BerthStatusCard（聖地コスモ専用・隠し機能）
+
+struct BerthStatusCard: View {
+    let berthService: BerthMonitorService
+    let onDetail: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("住友大阪セメント岸壁", systemImage: "anchor")
+                    .font(.subheadline.bold())
+                Spacer()
+                Button("詳細", action: onDetail)
+                    .font(.caption.bold())
+                    .foregroundStyle(.blue)
+            }
+
+            Divider()
+
+            HStack(spacing: 10) {
+                Image(systemName: berthService.isFishingAffected
+                      ? "exclamationmark.triangle.fill"
+                      : "checkmark.circle.fill")
+                    .foregroundStyle(berthService.isFishingAffected ? .red : .green)
+                    .font(.title3)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(berthService.isFishingAffected ? "釣りに影響あり（停泊中）" : "釣り可能")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(berthService.isFishingAffected ? .red : .green)
+
+                    if berthService.isFishingAffected, let clear = berthService.nextClearTime {
+                        Text("出港予定: \(clear, style: .relative)後")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    } else if let next = berthService.upcomingVessels.first,
+                              let arrival = next.arrivalDate {
+                        Text("次の入港: \(arrival, style: .relative)後")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("当面の入港予定なし")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+                Text(berthService.isFishingAffected ? "🚫" : "🎣")
+                    .font(.title2)
+            }
+
+            if let updated = berthService.lastUpdated {
+                Text("更新: \(updated, style: .relative)前")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.06), radius: 6)
     }
 }

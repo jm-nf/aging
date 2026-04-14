@@ -56,7 +56,7 @@ struct ShareSettingsView: View {
 
     private var contentItemsSection: some View {
         Section {
-            Toggle("釣り場", isOn: $draft.includeSpot)
+            Toggle("スポット", isOn: $draft.includeSpot)
             Toggle("日付", isOn: $draft.includeDate)
             Toggle("時刻・釣行時間", isOn: $draft.includeTime)
             Toggle("釣果数", isOn: $draft.includeFishCount)

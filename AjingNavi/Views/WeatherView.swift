@@ -80,7 +80,7 @@ struct WeatherView: View {
         HStack {
             Image(systemName: "mappin.circle.fill")
                 .foregroundStyle(.blue)
-            Text("釣り場")
+            Text("スポット")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()

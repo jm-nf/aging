@@ -49,7 +49,7 @@ struct InfoView: View {
             NavigationLink {
                 RulesView()
             } label: {
-                Label("釣り場ルールとマナー", systemImage: "checkmark.shield.fill")
+                Label("スポットルールとマナー", systemImage: "checkmark.shield.fill")
             }
         } header: {
             Text("マナー・ルール")
@@ -306,7 +306,7 @@ struct RulesView: View {
     var body: some View {
         List {
             Section("必ず守るべきルール") {
-                RuleRow(icon: "trash.slash.fill", text: "ゴミは必ず持ち帰る（釣り場閉鎖を防ぐため最重要）")
+                RuleRow(icon: "trash.slash.fill", text: "ゴミは必ず持ち帰る（スポット閉鎖を防ぐため最重要）")
                 RuleRow(icon: "person.2.fill", text: "他の釣り人との間隔を十分に空ける")
                 RuleRow(icon: "dock.arrow.down.rectangle", text: "立入禁止区域・釣り禁止区域には入らない")
                 RuleRow(icon: "fish.fill", text: "地域の漁業調整規則を確認する")
@@ -316,11 +316,11 @@ struct RulesView: View {
                 RuleRow(icon: "speaker.slash.fill", text: "夜間は騒がない（近隣住民への配慮）")
                 RuleRow(icon: "flashlight.off.fill", text: "ライトで海面を照らしすぎない")
                 RuleRow(icon: "car.fill", text: "駐車場以外への駐車禁止")
-                RuleRow(icon: "checkmark.seal.fill", text: "釣り場の設備（柵・トイレ等）を大切に使う")
+                RuleRow(icon: "checkmark.seal.fill", text: "スポットの設備（柵・トイレ等）を大切に使う")
             }
 
             Section("神奈川県の釣り規則") {
-                Text("神奈川県では一部の魚種（マダコ等）に禁漁期間が設けられています。アジは基本的に通年釣ることができますが、漁業権の設定されている区域では内水面での釣りに許可が必要な場合があります。\n\n釣り場の案内板を必ず確認しましょう。")
+                Text("神奈川県では一部の魚種（マダコ等）に禁漁期間が設けられています。アジは基本的に通年釣ることができますが、漁業権の設定されている区域では内水面での釣りに許可が必要な場合があります。\n\nスポットの案内板を必ず確認しましょう。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

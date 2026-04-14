@@ -220,7 +220,7 @@ struct VesselProfileView: View {
 
     private func infoSection(_ p: VesselProfile) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("釣り場への影響")
+            Text("スポットへの影響")
                 .font(.headline)
 
             VStack(spacing: 0) {

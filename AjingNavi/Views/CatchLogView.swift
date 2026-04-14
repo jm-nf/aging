@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
+
 // MARK: - Main List View
 
 struct CatchLogView: View {
@@ -116,7 +117,7 @@ struct CatchRecordRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(record.spotName.isEmpty ? "不明な釣り場" : record.spotName)
+                    Text(record.spotName.isEmpty ? "不明なスポット" : record.spotName)
                         .font(.headline)
                     Spacer()
                     Text("\(record.fishCount)匹")
@@ -270,7 +271,7 @@ struct CatchDetailView: View {
     private func infoCard(record: CatchRecord) -> some View {
         VStack(spacing: 0) {
             detailRow(icon: "mappin.circle.fill", color: .red,
-                      label: "釣り場", value: record.spotName.isEmpty ? "未設定" : record.spotName)
+                      label: "スポット", value: record.spotName.isEmpty ? "未設定" : record.spotName)
             Divider().padding(.leading, 40)
 
             detailRow(icon: "calendar", color: .blue,
@@ -652,8 +653,10 @@ struct AddCatchSheet: View {
     @EnvironmentObject var tackleStore: TackleStore
     @EnvironmentObject var berthUnlockStore: BerthUnlockStore
     @EnvironmentObject var berthService: BerthMonitorService
+    @EnvironmentObject var profileStore: VesselProfileStore
 
     @State private var selectedVessels: Set<String> = []
+    @State private var newVesselName = ""
     @State private var spotName = ""
     @State private var date = Date()
     @State private var useTimeRange = false
@@ -682,12 +685,16 @@ struct AddCatchSheet: View {
     private let weathers = ["晴れ", "晴れ時々曇り", "曇り", "雨", "風が強い"]
     private let tides = ["大潮", "中潮", "小潮", "長潮", "若潮"]
 
+    private var sortedVesselNames: [String] {
+        profileStore.profiles.map(\.vesselName).sorted()
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 // 基本情報
                 Section("基本情報") {
-                    Picker("釣り場", selection: $spotName) {
+                    Picker("スポット", selection: $spotName) {
                         Text("未選択").tag("")
                         ForEach(spots, id: \.self) { Text($0).tag($0) }
                     }
@@ -734,26 +741,32 @@ struct AddCatchSheet: View {
                 // 停泊船舶（聖地コスモ + 機能解除時のみ）
                 if spotName == "聖地コスモ" && berthUnlockStore.isUnlocked {
                     Section {
-                        if berthService.vessels.isEmpty {
-                            Text("船舶データなし（バースモニターで更新してください）")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(berthService.vessels) { vessel in
-                                Toggle(vessel.vesselName, isOn: Binding(
-                                    get: { selectedVessels.contains(vessel.vesselName) },
-                                    set: { on in
-                                        if on { selectedVessels.insert(vessel.vesselName) }
-                                        else  { selectedVessels.remove(vessel.vesselName) }
-                                    }
-                                ))
-                                .font(.subheadline)
+                        ForEach(profileStore.profiles) { profile in
+                            Toggle(profile.vesselName, isOn: Binding(
+                                get: { selectedVessels.contains(profile.vesselName) },
+                                set: { on in
+                                    if on { selectedVessels.insert(profile.vesselName) }
+                                    else  { selectedVessels.remove(profile.vesselName) }
+                                }
+                            ))
+                        }
+                        HStack {
+                            TextField("船舶名を入力", text: $newVesselName)
+                            Button("追加") {
+                                let trimmed = newVesselName.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !trimmed.isEmpty else { return }
+                                if profileStore.profile(for: trimmed) == nil {
+                                    profileStore.save(VesselProfile(vesselName: trimmed))
+                                }
+                                selectedVessels.insert(trimmed)
+                                newVesselName = ""
                             }
+                            .disabled(newVesselName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     } header: {
                         Text("停泊船舶（MTK0C）")
                     } footer: {
-                        Text("釣行中に停泊していた船を選択")
+                        Text("釣行中に停泊していた船を選択。未登録の船はテキスト入力して追加できます")
                     }
                 }
 
@@ -888,8 +901,10 @@ struct EditCatchSheet: View {
     @EnvironmentObject var tackleStore: TackleStore
     @EnvironmentObject var berthUnlockStore: BerthUnlockStore
     @EnvironmentObject var berthService: BerthMonitorService
+    @EnvironmentObject var profileStore: VesselProfileStore
 
     @State private var selectedVessels: Set<String>
+    @State private var newVesselName = ""
     @State private var spotName: String
     @State private var date: Date
     @State private var useTimeRange: Bool
@@ -919,6 +934,10 @@ struct EditCatchSheet: View {
     private let weathers = ["晴れ", "晴れ時々曇り", "曇り", "雨", "風が強い"]
     private let tides    = ["大潮", "中潮", "小潮", "長潮", "若潮"]
 
+    private var sortedVesselNames: [String] {
+        profileStore.profiles.map(\.vesselName).sorted()
+    }
+
     init(record: CatchRecord) {
         self.record = record
         _selectedVessels = State(initialValue: Set(record.dockedVessels))
@@ -945,7 +964,7 @@ struct EditCatchSheet: View {
         NavigationStack {
             Form {
                 Section("基本情報") {
-                    Picker("釣り場", selection: $spotName) {
+                    Picker("スポット", selection: $spotName) {
                         Text("未選択").tag("")
                         ForEach(spots, id: \.self) { Text($0).tag($0) }
                     }
@@ -986,26 +1005,32 @@ struct EditCatchSheet: View {
 
                 if spotName == "聖地コスモ" && berthUnlockStore.isUnlocked {
                     Section {
-                        if berthService.vessels.isEmpty {
-                            Text("船舶データなし（バースモニターで更新してください）")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(berthService.vessels) { vessel in
-                                Toggle(vessel.vesselName, isOn: Binding(
-                                    get: { selectedVessels.contains(vessel.vesselName) },
-                                    set: { on in
-                                        if on { selectedVessels.insert(vessel.vesselName) }
-                                        else  { selectedVessels.remove(vessel.vesselName) }
-                                    }
-                                ))
-                                .font(.subheadline)
+                        ForEach(profileStore.profiles) { profile in
+                            Toggle(profile.vesselName, isOn: Binding(
+                                get: { selectedVessels.contains(profile.vesselName) },
+                                set: { on in
+                                    if on { selectedVessels.insert(profile.vesselName) }
+                                    else  { selectedVessels.remove(profile.vesselName) }
+                                }
+                            ))
+                        }
+                        HStack {
+                            TextField("船舶名を入力", text: $newVesselName)
+                            Button("追加") {
+                                let trimmed = newVesselName.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !trimmed.isEmpty else { return }
+                                if profileStore.profile(for: trimmed) == nil {
+                                    profileStore.save(VesselProfile(vesselName: trimmed))
+                                }
+                                selectedVessels.insert(trimmed)
+                                newVesselName = ""
                             }
+                            .disabled(newVesselName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     } header: {
                         Text("停泊船舶（MTK0C）")
                     } footer: {
-                        Text("釣行中に停泊していた船を選択")
+                        Text("釣行中に停泊していた船を選択。未登録の船はテキスト入力して追加できます")
                     }
                 }
 

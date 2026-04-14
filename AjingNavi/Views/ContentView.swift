@@ -6,16 +6,18 @@ struct ContentView: View {
     @StateObject private var shareSettings = ShareSettingsStore()
     @StateObject private var berthUnlockStore = BerthUnlockStore()
     @StateObject private var vesselProfileStore = VesselProfileStore()
+    @StateObject private var spotStore = SpotSelectionStore()
     @EnvironmentObject private var berthService: BerthMonitorService
 
     var body: some View {
         TabView {
-            SpotsView()
+            SpotDashboardRoot()
+                .environmentObject(spotStore)
                 .environmentObject(berthUnlockStore)
                 .environmentObject(berthService)
                 .environmentObject(vesselProfileStore)
                 .tabItem {
-                    Label("釣り場", systemImage: "mappin.and.ellipse")
+                    Label("スポット", systemImage: "mappin.and.ellipse")
                 }
 
             CatchLogView()
@@ -24,6 +26,7 @@ struct ContentView: View {
                 .environmentObject(shareSettings)
                 .environmentObject(berthUnlockStore)
                 .environmentObject(berthService)
+                .environmentObject(vesselProfileStore)
                 .tabItem {
                     Label("釣果", systemImage: "fish.fill")
                 }

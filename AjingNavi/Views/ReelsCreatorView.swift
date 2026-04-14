@@ -66,7 +66,7 @@ struct ReelsCreatorView: View {
                 }
 
                 Section("テキスト表示") {
-                    Toggle("📍 釣り場: \(textOptions.spotName)",  isOn: $textOptions.showSpot)
+                    Toggle("📍 スポット: \(textOptions.spotName)",  isOn: $textOptions.showSpot)
                     Toggle("📅 日付: \(textOptions.dateText)",    isOn: $textOptions.showDate)
                     Toggle("🐟 釣果: \(textOptions.catchText)",   isOn: $textOptions.showCatch)
                     Toggle("🌊 潮回り: \(textOptions.tideText)",  isOn: $textOptions.showTide)
