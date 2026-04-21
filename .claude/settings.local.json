@@ -40,7 +40,10 @@
       "Bash(xcodebuild -scheme AjingNavi -sdk iphoneos -configuration Release -archivePath /tmp/AjingNavi.xcarchive archive -allowProvisioningUpdates)",
       "Bash(xcodebuild -exportArchive -archivePath /tmp/AjingNavi.xcarchive -exportPath /tmp/AjingNaviExport -exportOptionsPlist /tmp/ExportOptions.plist -allowProvisioningUpdates)",
       "Bash(mkdir -p ~/.appstoreconnect/private_keys)",
-      "Bash(mv ~/Downloads/AuthKey_5K5BA37ZB6.p8 ~/.appstoreconnect/private_keys/)"
+      "Bash(mv ~/Downloads/AuthKey_5K5BA37ZB6.p8 ~/.appstoreconnect/private_keys/)",
+      "Bash(mkdir -p /root/.claude/plans/other)",
+      "Bash(mv /root/.claude/plans/apple-music-elegant-wall.md /root/.claude/plans/other/apple-music-elegant-wall.md)",
+      "Read(//root/.claude/plans/**)"
     ]
   }
 }
